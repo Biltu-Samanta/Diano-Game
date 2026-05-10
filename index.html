@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BlinkRun — Blink to Jump</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --card: #1a1a26;
+    --accent: #00ffcc;
+    --accent2: #ff6b35;
+    --accent3: #7c3aed;
+    --text: #e8e8f0;
+    --muted: #555570;
+    --danger: #ff3366;
+    --glow: 0 0 20px rgba(0,255,204,0.4);
+    --glow2: 0 0 20px rgba(255,107,53,0.4);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Orbitron', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-image:
+      radial-gradient(ellipse 80% 40% at 50% 0%, rgba(124,58,237,0.15) 0%, transparent 60%),
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0,255,204,0.03) 39px, rgba(0,255,204,0.03) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0,255,204,0.03) 39px, rgba(0,255,204,0.03) 40px);
+  }
+
+  header {
+    text-align: center;
+    padding: 20px 16px 8px;
+  }
+  header h1 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(16px, 4vw, 28px);
+    color: var(--accent);
+    text-shadow: var(--glow);
+    letter-spacing: 2px;
+  }
+  header p {
+    color: var(--muted);
+    font-size: 10px;
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+
+  .layout {
+    display: flex;
+    gap: 16px;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 16px;
+    align-items: flex-start;
+  }
+
+  /* ── GAME PANEL ── */
+  .game-panel {
+    flex: 1;
+    min-width: 0;
+  }
+
+  #score-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--card);
+    border: 1px solid rgba(0,255,204,0.15);
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 10px;
+    font-size: 11px;
+  }
+  #score-bar .label { color: var(--muted); }
+  #score-val  { color: var(--accent);  font-size: 18px; font-weight: 700; text-shadow: var(--glow); }
+  #hi-val     { color: var(--accent2); font-size: 14px; }
+
+  #game-canvas {
+    width: 100%;
+    border: 2px solid rgba(0,255,204,0.3);
+    border-radius: 8px;
+    background: #0d0d16;
+    display: block;
+    box-shadow: var(--glow);
+  }
+
+  #status-msg {
+    text-align: center;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--accent2);
+    min-height: 20px;
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+
+  /* ── RIGHT PANEL ── */
+  .side-panel {
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid rgba(0,255,204,0.1);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .card h3 {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding-bottom: 8px;
+  }
+
+  /* Camera */
+  #cam-wrap {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    aspect-ratio: 4/3;
+  }
+  #cam-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    display: block;
+    opacity: 0.85;
+  }
+  #cam-overlay {
+    position: absolute;
+    inset: 0;
+    border: 2px solid rgba(0,255,204,0.2);
+    border-radius: 8px;
+    pointer-events: none;
+  }
+  #blink-badge {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,255,204,0.15);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 8px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    white-space: nowrap;
+    backdrop-filter: blur(4px);
+  }
+  #blink-badge.blink-active {
+    background: rgba(0,255,204,0.4);
+    box-shadow: var(--glow);
+    animation: pulse 0.3s ease;
+  }
+  @keyframes pulse { 0%,100%{transform:translateX(-50%) scale(1)} 50%{transform:translateX(-50%) scale(1.1)} }
+
+  #cam-status {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 8px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  /* Stats */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 9px;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-row .s-label { color: var(--muted); }
+  .stat-row .s-val   { color: var(--accent); font-weight: 700; }
+  .stat-row .s-val.danger { color: var(--danger); }
+
+  /* Controls */
+  .btn {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 6px;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 9px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    margin-bottom: 6px;
+  }
+  .btn:last-child { margin-bottom: 0; }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #00cc99);
+    color: #0a0a0f;
+    box-shadow: var(--glow);
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 30px rgba(0,255,204,0.6); }
+  .btn-danger {
+    background: linear-gradient(135deg, var(--danger), #cc0044);
+    color: #fff;
+  }
+  .btn-muted {
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  /* Upload status */
+  #upload-status {
+    font-size: 8px;
+    color: var(--muted);
+    margin-top: 6px;
+    min-height: 16px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  #upload-status.ok    { color: var(--accent); }
+  #upload-status.error { color: var(--danger); }
+
+  /* Leaderboard */
+  #lb-list {
+    list-style: none;
+  }
+  #lb-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 9px;
+  }
+  #lb-list li:last-child { border-bottom: none; }
+  #lb-list .lb-rank  { color: var(--accent3); min-width: 20px; }
+  #lb-list .lb-name  { color: var(--text); flex: 1; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #lb-list .lb-score { color: var(--accent2); font-weight: 700; }
+
+  /* Register modal */
+  #modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(6px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  #modal-overlay.hidden { display: none; }
+  #modal-box {
+    background: var(--card);
+    border: 1px solid rgba(0,255,204,0.3);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 360px;
+    width: 100%;
+    box-shadow: 0 0 60px rgba(0,255,204,0.2);
+    text-align: center;
+  }
+  #modal-box h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  #modal-box p {
+    font-size: 9px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.8;
+  }
+  #modal-box input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid rgba(0,255,204,0.2);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    padding: 12px 14px;
+    outline: none;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+  #modal-box input:focus { border-color: var(--accent); box-shadow: var(--glow); }
+  #modal-snap-preview {
+    width: 120px;
+    height: 90px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 2px solid rgba(0,255,204,0.3);
+    margin: 0 auto 16px;
+    display: none;
+    transform: scaleX(-1);
+  }
+
+  /* Game over overlay */
+  #game-over-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+  }
+  #game-over-overlay.hidden { display: none; }
+  #game-over-overlay h2 {
+    font-family: 'Press Start 2P', monospace;
+    font-size: clamp(14px, 3vw, 22px);
+    color: var(--danger);
+    margin-bottom: 12px;
+    animation: flicker 1s infinite;
+  }
+  @keyframes flicker { 0%,100%{opacity:1} 50%{opacity:0.7} }
+  #game-over-overlay .final-score {
+    font-size: 28px;
+    color: var(--accent);
+    font-weight: 900;
+    text-shadow: var(--glow);
+    margin-bottom: 20px;
+  }
+
+  #canvas-wrap { position: relative; }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .layout { flex-direction: column; }
+    .side-panel { width: 100%; flex-direction: row; flex-wrap: wrap; }
+    .side-panel .card { flex: 1; min-width: 160px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>👁 BLINK RUN</h1>
+  <p>BLINK YOUR EYES → DINO JUMPS &nbsp;|&nbsp; SURVIVAL RUNNER</p>
+</header>
+
+<div class="layout">
+
+  <!-- ── GAME ── -->
+  <div class="game-panel">
+    <div id="score-bar">
+      <div><div class="label" style="font-size:8px;margin-bottom:3px">SCORE</div><span id="score-val">0</span></div>
+      <div style="text-align:center"><div class="label" style="font-size:8px;margin-bottom:3px">HI-SCORE</div><span id="hi-val">0</span></div>
+      <div style="text-align:right"><div class="label" style="font-size:8px;margin-bottom:3px">SPEED</div><span id="speed-val" style="color:#7c3aed;font-size:14px">1.0×</span></div>
+    </div>
+
+    <div id="canvas-wrap">
+      <canvas id="game-canvas" width="700" height="200"></canvas>
+      <div id="game-over-overlay" class="hidden">
+        <h2>GAME OVER</h2>
+        <div class="final-score" id="final-score-txt">0</div>
+        <button class="btn btn-primary" style="width:160px" onclick="restartGame()">▶ RESTART</button>
+      </div>
+    </div>
+    <div id="status-msg">BLINK TO START →</div>
+  </div>
+
+  <!-- ── SIDE ── -->
+  <div class="side-panel">
+
+    <!-- Camera -->
+    <div class="card">
+      <h3>📷 Eye Tracker</h3>
+      <div id="cam-wrap">
+        <video id="cam-video" autoplay muted playsinline></video>
+        <div id="cam-overlay"></div>
+        <div id="blink-badge">● WATCHING</div>
+      </div>
+      <div id="cam-status">Loading face detector…</div>
+    </div>
+
+    <!-- Stats -->
+    <div class="card">
+      <h3>⚡ Stats</h3>
+      <div class="stat-row"><span class="s-label">Blinks</span><span class="s-val" id="blink-count">0</span></div>
+      <div class="stat-row"><span class="s-label">Jumps</span><span class="s-val" id="jump-count">0</span></div>
+      <div class="stat-row"><span class="s-label">Distance</span><span class="s-val" id="dist-val">0m</span></div>
+      <div class="stat-row"><span class="s-label">Session</span><span class="s-val" id="session-val">00:00</span></div>
+    </div>
+
+    <!-- Actions -->
+    <div class="card">
+      <h3>🎮 Controls</h3>
+      <button class="btn btn-primary" onclick="openRegister()">📸 REGISTER &amp; PLAY</button>
+      <button class="btn btn-muted"   onclick="fetchLeaderboard()">🏆 REFRESH LB</button>
+      <div id="upload-status">Click Register to snap photo &amp; join</div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div class="card">
+      <h3>🏆 Leaderboard</h3>
+      <ul id="lb-list">
+        <li><span class="lb-rank">#</span><span class="lb-name" style="color:var(--muted)">Loading…</span><span class="lb-score"></span></li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+<!-- Register Modal -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <h2>JOIN THE RUN</h2>
+    <p>Enter your name. We'll snap a quick photo<br/>and save it to the game database.</p>
+    <canvas id="snap-canvas" width="320" height="240" style="display:none"></canvas>
+    <img id="modal-snap-preview" alt="Your photo" />
+    <input id="player-name" type="text" placeholder="YOUR NAME" maxlength="20" />
+    <button class="btn btn-primary" onclick="snapAndRegister()">📸 SNAP &amp; PLAY</button>
+    <button class="btn btn-muted" style="margin-top:4px" onclick="closeModal()">CANCEL</button>
+  </div>
+</div>
+
+<!-- MediaPipe Face Mesh CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+<script>
+// ══════════════════════════════════════════════
+//  CONFIG
+// ══════════════════════════════════════════════
+const BACKEND = 'http://localhost:5000'; // change if deployed
+
+// ══════════════════════════════════════════════
+//  GAME ENGINE
+// ══════════════════════════════════════════════
+const canvas  = document.getElementById('game-canvas');
+const ctx     = canvas.getContext('2d');
+
+const W = canvas.width, H = canvas.height;
+const GROUND = H - 30;
+const DINO_W = 40, DINO_H = 50;
+const OBS_W  = 22;
+
+let gameState  = 'waiting'; // waiting | running | dead
+let score      = 0;
+let hiScore    = parseInt(localStorage.getItem('hiScore') || '0');
+let speed      = 4;
+let frameCount = 0;
+let jumpCount  = 0;
+let startTime  = null;
+
+const dino = { x: 80, y: GROUND - DINO_H, vy: 0, jumping: false };
+let obstacles = [];
+let stars     = Array.from({length: 60}, () => ({
+  x: Math.random() * W, y: Math.random() * (GROUND - 40),
+  r: Math.random() * 1.5 + 0.3, s: Math.random() * 0.5 + 0.1
+}));
+
+function jump() {
+  if (dino.jumping) return;
+  if (gameState === 'waiting') { gameState = 'running'; startTime = Date.now(); }
+  if (gameState !== 'running') return;
+  dino.vy = -13;
+  dino.jumping = true;
+  jumpCount++;
+  document.getElementById('jump-count').textContent = jumpCount;
+}
+
+function spawnObstacle() {
+  const h = 28 + Math.random() * 30;
+  obstacles.push({ x: W + 20, y: GROUND - h, w: OBS_W, h });
+}
+
+function checkCollision(obs) {
+  const padding = 6;
+  return (
+    dino.x + padding < obs.x + obs.w - padding &&
+    dino.x + DINO_W - padding > obs.x + padding &&
+    dino.y + padding < obs.y + obs.h &&
+    dino.y + DINO_H > obs.y + padding
+  );
+}
+
+// Draw helpers
+function hexAlpha(hex, a) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function drawDino(x, y, frame, dead) {
+  const c = dead ? '#ff3366' : '#00ffcc';
+  ctx.save();
+
+  // Body
+  ctx.fillStyle = c;
+  ctx.shadowColor = c; ctx.shadowBlur = 12;
+  ctx.fillRect(x + 6, y + 14, 28, 28);
+
+  // Head
+  ctx.fillRect(x + 14, y, 22, 18);
+
+  // Eye
+  ctx.fillStyle = dead ? '#fff' : '#0a0a0f';
+  ctx.shadowBlur = 0;
+  ctx.fillRect(x + 28, y + 4, 5, 5);
+
+  // Mouth (dead = X)
+  if (dead) {
+    ctx.strokeStyle = '#0a0a0f'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x+27,y+11); ctx.lineTo(x+33,y+15); ctx.moveTo(x+33,y+11); ctx.lineTo(x+27,y+15); ctx.stroke();
+  }
+
+  // Legs
+  const legOffset = Math.sin(frame * 0.25) * 5;
+  ctx.fillStyle = c; ctx.shadowColor = c; ctx.shadowBlur = 8;
+  ctx.fillRect(x + 8,  y + 42, 8, 14 + (dino.jumping ? 0 : legOffset));
+  ctx.fillRect(x + 22, y + 42, 8, 14 - (dino.jumping ? 0 : legOffset));
+
+  // Tail
+  ctx.fillRect(x, y + 20, 8, 10);
+  ctx.restore();
+}
+
+function drawObstacle(obs) {
+  ctx.save();
+  ctx.fillStyle = '#ff6b35';
+  ctx.shadowColor = '#ff6b35'; ctx.shadowBlur = 10;
+  // Cactus-like
+  ctx.fillRect(obs.x + 7, obs.y, 8, obs.h);
+  ctx.fillRect(obs.x,     obs.y + obs.h * 0.3, obs.w, 8);
+  ctx.fillRect(obs.x,     obs.y + obs.h * 0.3, 8, 16);
+  ctx.fillRect(obs.x+14,  obs.y + obs.h * 0.5, 8, 12);
+  ctx.restore();
+}
+
+function drawGround() {
+  ctx.save();
+  ctx.strokeStyle = '#00ffcc';
+  ctx.shadowColor = '#00ffcc'; ctx.shadowBlur = 6;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, GROUND); ctx.lineTo(W, GROUND); ctx.stroke();
+  // dashes
+  ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(0,255,204,0.2)'; ctx.lineWidth = 1;
+  ctx.setLineDash([20, 30]);
+  ctx.beginPath(); ctx.moveTo(0, GROUND + 8); ctx.lineTo(W, GROUND + 8); ctx.stroke();
+  ctx.restore();
+}
+
+function update() {
+  if (gameState !== 'running') return;
+
+  frameCount++;
+  speed = 4 + score * 0.003;
+  document.getElementById('speed-val').textContent = speed.toFixed(1) + '×';
+
+  // Physics
+  dino.vy += 0.7;
+  dino.y  += dino.vy;
+  if (dino.y >= GROUND - DINO_H) {
+    dino.y = GROUND - DINO_H;
+    dino.vy = 0;
+    dino.jumping = false;
+  }
+
+  // Obstacles
+  if (frameCount % Math.max(55, 110 - score * 0.1) === 0) spawnObstacle();
+  obstacles.forEach(o => o.x -= speed);
+  obstacles = obstacles.filter(o => o.x + o.w > -10);
+
+  // Collision
+  if (obstacles.some(checkCollision)) {
+    gameState = 'dead';
+    if (score > hiScore) {
+      hiScore = score;
+      localStorage.setItem('hiScore', hiScore);
+      document.getElementById('hi-val').textContent = hiScore;
+    }
+    document.getElementById('game-over-overlay').classList.remove('hidden');
+    document.getElementById('final-score-txt').textContent = score;
+    uploadScore();
+  }
+
+  score++;
+  document.getElementById('score-val').textContent = score;
+  document.getElementById('dist-val').textContent = Math.floor(score / 5) + 'm';
+
+  // Session timer
+  if (startTime) {
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    const mm = String(Math.floor(s/60)).padStart(2,'0');
+    const ss = String(s%60).padStart(2,'0');
+    document.getElementById('session-val').textContent = mm + ':' + ss;
+  }
+
+  // Stars drift
+  stars.forEach(st => { st.x -= st.s; if (st.x < 0) { st.x = W; st.y = Math.random() * (GROUND - 40); } });
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0, '#0a0a14');
+  bg.addColorStop(1, '#0d0d1e');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,W,H);
+
+  // Stars
+  stars.forEach(st => {
+    ctx.save();
+    ctx.fillStyle = `rgba(200,200,255,${0.3 + Math.sin(frameCount*0.05 + st.x)*0.2})`;
+    ctx.shadowColor = '#fff'; ctx.shadowBlur = 4;
+    ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  drawGround();
+  obstacles.forEach(drawObstacle);
+  drawDino(dino.x, dino.y, frameCount, gameState === 'dead');
+
+  // Waiting overlay
+  if (gameState === 'waiting') {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,255,204,0.08)';
+    ctx.fillRect(0,0,W,H);
+    ctx.font = "bold 13px 'Press Start 2P'";
+    ctx.fillStyle = '#00ffcc';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#00ffcc'; ctx.shadowBlur = 20;
+    ctx.fillText('BLINK TO START', W/2, H/2 - 10);
+    ctx.font = "9px 'Orbitron'";
+    ctx.fillStyle = 'rgba(0,255,204,0.5)';
+    ctx.shadowBlur = 0;
+    ctx.fillText('or press SPACE / TAP', W/2, H/2 + 14);
+    ctx.restore();
+  }
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function restartGame() {
+  score = 0; speed = 4; frameCount = 0; jumpCount = 0; startTime = null;
+  dino.y = GROUND - DINO_H; dino.vy = 0; dino.jumping = false;
+  obstacles = [];
+  gameState = 'waiting';
+  document.getElementById('game-over-overlay').classList.add('hidden');
+  document.getElementById('score-val').textContent = '0';
+  document.getElementById('hi-val').textContent   = hiScore;
+  document.getElementById('jump-count').textContent = '0';
+  document.getElementById('dist-val').textContent  = '0m';
+  document.getElementById('session-val').textContent = '00:00';
+}
+
+document.getElementById('hi-val').textContent = hiScore;
+document.addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); jump(); } });
+canvas.addEventListener('click', jump);
+loop();
+
+// ══════════════════════════════════════════════
+//  EYE BLINK DETECTION (MediaPipe Face Mesh)
+// ══════════════════════════════════════════════
+const video = document.getElementById('cam-video');
+const camStatus = document.getElementById('cam-status');
+const blinkBadge = document.getElementById('blink-badge');
+
+let blinkCount    = 0;
+let lastEarLeft   = 1;
+let lastEarRight  = 1;
+let blinkCooldown = false;
+
+const EAR_THRESH = 0.21;  // eye aspect ratio threshold
+const BLINK_COOLDOWN_MS = 400;
+
+// EAR = eye aspect ratio from 6 landmark points
+function eyeAspectRatio(pts) {
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const v1 = dist(pts[1], pts[5]);
+  const v2 = dist(pts[2], pts[4]);
+  const h  = dist(pts[0], pts[3]);
+  return (v1 + v2) / (2 * h);
+}
+
+// MediaPipe left/right eye landmark indices
+const LEFT_EYE_IDX  = [362, 385, 387, 263, 373, 380];
+const RIGHT_EYE_IDX = [33,  160, 158, 133, 153, 144];
+
+function onFaceResults(results) {
+  if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
+  const lm = results.multiFaceLandmarks[0];
+
+  const leftPts  = LEFT_EYE_IDX.map(i => lm[i]);
+  const rightPts = RIGHT_EYE_IDX.map(i => lm[i]);
+  const earL = eyeAspectRatio(leftPts);
+  const earR = eyeAspectRatio(rightPts);
+  const ear  = (earL + earR) / 2;
+
+  const isBlinking = ear < EAR_THRESH;
+  const wasOpen    = (lastEarLeft + lastEarRight) / 2 >= EAR_THRESH;
+
+  if (isBlinking && wasOpen && !blinkCooldown) {
+    // Blink detected!
+    blinkCount++;
+    document.getElementById('blink-count').textContent = blinkCount;
+    blinkBadge.textContent = '👁 BLINK!';
+    blinkBadge.classList.add('blink-active');
+    blinkCooldown = true;
+    jump();
+    setTimeout(() => {
+      blinkBadge.textContent = '● WATCHING';
+      blinkBadge.classList.remove('blink-active');
+      blinkCooldown = false;
+    }, BLINK_COOLDOWN_MS);
+  }
+
+  lastEarLeft  = earL;
+  lastEarRight = earR;
+}
+
+async function initCamera() {
+  try {
+    const faceMesh = new FaceMesh({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+    faceMesh.onResults(onFaceResults);
+
+    const cam = new Camera(video, {
+      onFrame: async () => { await faceMesh.send({ image: video }); },
+      width: 320, height: 240
+    });
+    await cam.start();
+    camStatus.textContent = '✅ Eye tracking active\nBlink to jump!';
+    camStatus.style.color = '#00ffcc';
+  } catch (e) {
+    camStatus.textContent = '⚠ Camera error: ' + e.message;
+    camStatus.style.color = '#ff3366';
+  }
+}
+
+initCamera();
+
+// ══════════════════════════════════════════════
+//  REGISTER & PHOTO UPLOAD
+// ══════════════════════════════════════════════
+let currentPlayerName = localStorage.getItem('playerName') || '';
+let currentPlayerId   = localStorage.getItem('playerId')   || null;
+
+function openRegister() {
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  document.getElementById('player-name').value = currentPlayerName;
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+async function snapAndRegister() {
+  const name = document.getElementById('player-name').value.trim();
+  if (!name) { alert('Enter your name!'); return; }
+
+  // Snap photo from video
+  const snapCanvas = document.getElementById('snap-canvas');
+  const sc = snapCanvas.getContext('2d');
+  sc.save(); sc.translate(320, 0); sc.scale(-1, 1);
+  sc.drawImage(video, 0, 0, 320, 240);
+  sc.restore();
+
+  const preview = document.getElementById('modal-snap-preview');
+  preview.src   = snapCanvas.toDataURL('image/jpeg', 0.85);
+  preview.style.display = 'block';
+
+  const photoData = snapCanvas.toDataURL('image/jpeg', 0.85);
+
+  try {
+    const res = await fetch(`${BACKEND}/api/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, photo: photoData })
+    });
+    const data = await res.json();
+    if (data.success) {
+      currentPlayerName = name;
+      currentPlayerId   = data.player_id;
+      localStorage.setItem('playerName', name);
+      localStorage.setItem('playerId',   data.player_id);
+      setUploadStatus('✅ Registered as ' + name, 'ok');
+      closeModal();
+      fetchLeaderboard();
+    } else {
+      setUploadStatus('❌ ' + (data.error || 'Server error'), 'error');
+    }
+  } catch (e) {
+    setUploadStatus('❌ Backend offline — check localhost:5000', 'error');
+  }
+}
+
+async function uploadScore() {
+  if (!currentPlayerId || score < 5) return;
+  try {
+    await fetch(`${BACKEND}/api/score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player_id: currentPlayerId, score })
+    });
+    fetchLeaderboard();
+  } catch {}
+}
+
+async function fetchLeaderboard() {
+  try {
+    const res  = await fetch(`${BACKEND}/api/leaderboard`);
+    const data = await res.json();
+    const lb   = document.getElementById('lb-list');
+    lb.innerHTML = '';
+    (data.leaderboard || []).slice(0, 7).forEach((row, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = `<span class="lb-rank">#${i+1}</span><span class="lb-name">${escHtml(row.name)}</span><span class="lb-score">${row.score}</span>`;
+      lb.appendChild(li);
+    });
+    if (!data.leaderboard?.length) lb.innerHTML = '<li><span class="lb-name" style="color:var(--muted)">No scores yet</span></li>';
+  } catch {
+    document.getElementById('lb-list').innerHTML = '<li><span class="lb-name" style="color:var(--muted)">Backend offline</span></li>';
+  }
+}
+
+function setUploadStatus(msg, cls='') {
+  const el = document.getElementById('upload-status');
+  el.textContent = msg;
+  el.className = cls;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Init
+fetchLeaderboard();
+if (currentPlayerName) setUploadStatus('👋 Welcome back, ' + currentPlayerName, 'ok');
+</script>
+</body>
+</html>

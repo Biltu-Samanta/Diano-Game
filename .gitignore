@@ -1,0 +1,15 @@
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+.env
+game_data.json
+
+# Ignore player photos but keep the directory
+player_photos/*
+!player_photos/.keep
+
+# OS generated files
+.DS_Store
+Thumbs.db
